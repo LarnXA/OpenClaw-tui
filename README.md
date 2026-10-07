@@ -1,6 +1,8 @@
 # opc-tui
 > OpenClaw 终端客户端：直连 Gateway 的流式 TUI，--full 全屏。实时思考折叠、工具卡、真实 token 与花费、命令补全、滚轮翻历史，零构建即用。
-
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="dsh-TUI 像素鲸鱼标题动画" width="560">
+</p>
 
 ## 特性
 
@@ -10,7 +12,9 @@
 - 每步**动态图标**（思考 / 工具 / 正文 / 完成 / 出错）
 - 底部三行（输入框 / 上下文进度条 / 数据行）**跟随终端宽度**，缩放窗口自动重排
 - 启动 banner：像素小龙虾 + 大字 LOGO + 流光动画
-
+##预览
+- **简约tui**
+- 
 ## 环境要求
 
 - **Node.js >= 18**
@@ -141,17 +145,16 @@ opc-tui --full   # 全屏界面（同样直连 Gateway）
 - `Ctrl+V` 粘贴 · `Ctrl+C`（输入为空时）退出 · `↑`/`↓` 输入历史
 
 ## 目录结构
-
-```
-bin/opc-tui.js     入口
-src/simple.js      默认的流式 CLI 界面（主逻辑）
-src/app.js         全屏界面（--full）
-src/ansi.js        颜色 / truecolor 辅助
-src/screen.js      宽度计算、diff 渲染
-src/sprite.js      像素小龙虾
-src/gw.mjs         Gateway 客户端封装
-dev-notes/         开发期探针脚本（已在 .gitignore 中排除）
-```
+|文件名|作用|
+|---|---|
+| bin/opc-tui.js|入口|
+| src/simple.js|默认的流式 CLI 界面（主逻辑）|
+| src/app.js|全屏界面（--full）|
+| src/ansi.js|颜色 / truecolor 辅助|
+| src/screen.js|宽度计算、diff 渲染|
+| src/sprite.js |像素小龙虾|
+|src/gw.mjs|Gateway 客户端封装|
+| dev-notes/|开发期探针脚本（已在 .gitignore 中排除）|
 
 ## License
 
