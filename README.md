@@ -4,6 +4,11 @@
   <img src="docs/assets/logo.svg" alt="dsh-TUI 像素鲸鱼标题动画" width="560">
 </p>
 
+## 预览
+- opc-tui 简约控制台
+![image](docs/assets/view-tui.gif)
+- opc-tui --full 全屏控制台
+![image](docs/assets/view-tui-full.gif)
 ## 特性
 
 - **直连 Gateway WebSocket**（`ws://127.0.0.1:<port>`），不经过 CLI 子进程
