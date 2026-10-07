@@ -80,7 +80,7 @@ Screen.prototype.render = function () {
     for (x = 0; x < this.w; x++) {
       i = y * this.w + x;
       var c = this.buf[i], p = this.prev[i];
-      if (c.skip) continue;
+      if (c.skip) { p.c = '\u0001'; p.fg = null; p.bg = null; p.b = false; continue; }
       if (c.c === p.c && c.fg === p.fg && c.bg === p.bg && c.b === p.b) continue;
       if (y !== cyp || x !== cxp) { o += '\u001b[' + (y + 1) + ';' + (x + 1) + 'H'; cxp = x; cyp = y; }
       if (c.fg !== cf || c.bg !== cb || c.b !== cbold) {
