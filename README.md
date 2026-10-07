@@ -1,6 +1,6 @@
 # opc-tui
+> OpenClaw 终端客户端：直连 Gateway 的流式 TUI，--full 全屏。实时思考折叠、工具卡、真实 token 与花费、命令补全、滚轮翻历史，零构建即用。
 
-OpenClaw 的**终端客户端（TUI）**：直连本机 Gateway 的 WebSocket，聊天、实时看思考过程、看会话数据。
 
 ## 特性
 
