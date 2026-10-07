@@ -1,0 +1,23 @@
+{
+  "name": "opc-tui",
+  "version": "1.7.0",
+  "description": "OpenClaw CMD TUI（直连 Gateway WebSocket）",
+  "bin": {
+    "opc-tui": "bin/opc-tui.js"
+  },
+  "main": "src/simple.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@openclaw/gateway-client": "2026.8.1",
+    "@openclaw/gateway-protocol": "2026.8.1"
+  }
+}

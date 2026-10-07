@@ -1,0 +1,8 @@
+node_modules/
+dev-notes/
+npm-debug.log*
+*.log
+session-*.txt
+.DS_Store
+Thumbs.db
+.opc-tui.json
