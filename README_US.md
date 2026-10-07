@@ -1,7 +1,7 @@
 # opc-tui
 > OpenClaw Terminal Client: A streaming TUI that connects directly to the Gateway, --full for full screen. Real-time folding of thoughts, tool cards, actual tokens and costs, command completion, scroll through history, ready to use without any setup.
 <p align="center">
-  <strong>English</strong> | <a href="README.md">简体中文</a>
+   <a href="README.md">简体中文</a> | <strong>English</strong>
 </p>
 
 ## View
