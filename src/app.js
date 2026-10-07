@@ -49,14 +49,14 @@ function App(){
     mode:'max', effort:'Max effort', agent:'main', session:hex8(), cwd:process.cwd(),
     git:gitBranch(), startedAt:Date.now(), input:'', cur:0, hist:[], hi:0,
     menu:false, menuSel:0, showRewind:false, showHelp:false, busy:false, stateTxt:'\u5c31\u7eea',
-    activity:'\u7a7a\u95f2', phase:0, scroll:0, tab:0, sel:[0,0,0,0,0], exited:false, expanded:false };
+    activity:'\u7a7a\u95f2', phase:0, scroll:1e9, tab:0, sel:[0,0,0,0,0], exited:false, expanded:false };
   this.rows=[];
   this.todos=[ {t:'demo',s:1}, {t:'\u8ba1\u7b97\u5468\u6b21\u5e76\u5217\u51fa\u4eca\u65e5\u8bfe\u7a0b',s:1},
                {t:'demo',s:0}, {t:'\u751f\u6210\u6574\u7406\u5efa\u8bae',s:-1} ];
   this.ctxInfo={ system:12, runtime:3, tools:26 };
   this.timers=[];
 }
-App.prototype.row=function(segs){ this.rows.push(segs||[]); this.st.scroll=1e9; };
+App.prototype.row=function(segs){ this.rows.push(segs||[]); };
 App.prototype.wrapPush=function(segs,width){
   var line=[], w=0, out=[];
   for(var i=0;i<segs.length;i++){
@@ -161,8 +161,10 @@ App.prototype.renderWork=function(w,h){
 
   // content
   var maxStart=Math.max(0,this.rows.length-visible);
-  if(st.scroll>=1e8) st.scroll=maxStart;
-  var start=Math.max(0,Math.min(maxStart,st.scroll));
+  this._maxStart=maxStart;
+  var start;
+  if(st.scroll>=1e8){ start=maxStart; }
+  else { st.scroll=Math.max(0,Math.min(maxStart,st.scroll)); start=st.scroll; }
   for(i=0;i<visible;i++){
     var r=this.rows[start+i]; if(!r) continue;
     var cx=1;
@@ -308,6 +310,20 @@ App.prototype.renderOverlay=function(w,h,kind){
 };
 
 /* ---------------- input ---------------- */
+App.prototype.onMouse=function(seq){
+  if(seq.charAt(0)!=='['||seq.charAt(1)!=='<'||seq.charAt(seq.length-1)!=='M') return;
+  var parts=seq.slice(2,seq.length-1).split(';');
+  if(parts.length<3) return;
+  var b=parseInt(parts[0],10);
+  if(!(b&64)) return;
+  this.scrollBy(((b&1)===0)?-3:3);
+};
+App.prototype.scrollBy=function(d){
+  var st=this.st, maxStart=this._maxStart||0;
+  var cur=(st.scroll>=1e8)?maxStart:st.scroll;
+  st.scroll=Math.max(0,Math.min(maxStart,cur+d));
+  if(st.scroll>=maxStart) st.scroll=1e9;
+};
 App.prototype.onData=function(s){
   var st=this.st, i=0;
   while(i<s.length){
@@ -315,11 +331,14 @@ App.prototype.onData=function(s){
     if(ch==='\u001b'){
       var rest=s.slice(i+1);
       if(rest[0]==='['){
-        var c=rest[1];
-        if(c==='A') this.keyUp(); else if(c==='B') this.keyDown();
-        else if(c==='C') this.keyLeft(); else if(c==='D') this.keyRight();
-        else if(c==='H') st.cur=0; else if(c==='F') st.cur=st.input.length;
-        if('ABCDHF'.indexOf(c)>=0) i+=3; else i+=2;
+        var j=1;
+        while(j<rest.length){ var cc=rest.charCodeAt(j); if(cc>=0x40&&cc<=0x7e) break; j++; }
+        var seq=rest.slice(0,j+1), fin=rest[j];
+        if(fin==='A') this.keyUp(); else if(fin==='B') this.keyDown();
+        else if(fin==='C') this.keyLeft(); else if(fin==='D') this.keyRight();
+        else if(fin==='H') st.cur=0; else if(fin==='F') st.cur=st.input.length;
+        else if(fin==='M'||fin==='m') this.onMouse(seq);
+        i += 1 + (j + 1);
         continue;
       }
       this.keyEsc(); i+=1; continue;
