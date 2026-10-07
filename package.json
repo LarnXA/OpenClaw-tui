@@ -1,6 +1,6 @@
 {
   "name": "opc-tui",
-  "version": "1.7.0",
+  "version": "当前版本：26.0 更新时间：2026.10.07",
   "description": "OpenClaw CMD TUI（直连 Gateway WebSocket）",
   "bin": {
     "opc-tui": "bin/opc-tui.js"
