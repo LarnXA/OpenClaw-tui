@@ -5,6 +5,9 @@
 # OpenClaw-Tui
 > OpenClaw Terminal Client: A streaming TUI that connects directly to the Gateway, --full for full screen. Real-time folding of thoughts, tool cards, actual tokens and costs, command completion, scroll through history, ready to use without any setup.
 
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="dsh-TUI 像素龙虾标题动画" width="560"></p>
+
 
 ## View
 <div align="center">
