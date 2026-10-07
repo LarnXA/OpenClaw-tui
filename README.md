@@ -3,7 +3,9 @@
 <p align="center">
   <img src="docs/assets/logo.svg" alt="dsh-TUI 像素龙虾标题动画" width="560">
 </p>
-
+<p align="center">
+  <strong>简体中文</strong> | <a href="README_US.md">English</a>
+</p>
 ## 预览
 <div align="center">
   <picture>
