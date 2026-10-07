@@ -41,7 +41,7 @@ npm install -g https://github.com/LarnXA/OpenClaw-tui.git
 
 ```bash
 opc-tui          # 默认：流式 CLI 界面（直连 Gateway）
-opc-tui --full   # 全屏界面
+opc-tui --full   # 全屏界面（同样直连 Gateway）
 ```
 
 ## 怎么找到 Gateway 配置

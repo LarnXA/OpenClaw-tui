@@ -3,8 +3,9 @@ var ansi = require('./ansi.js');
 var scr = require('./screen.js');
 var Screen = scr.Screen, strWidth = scr.strWidth;
 var sprite = require('./sprite.js');
+var live = require('./live.js');
 
-var VERSION = '0.2.0';
+var VERSION = require('../package.json').version;
 var C = {
   bg:[8,9,13], panel:[13,15,21], panel2:[22,25,34], border:[30,36,50], line:[22,27,38],
   text:[217,222,234], soft:[174,182,198], muted:[124,134,153], dim:[74,83,104],
@@ -45,16 +46,18 @@ function gitBranch(){ try{ var cp=require('child_process'); var s=cp.execSync('g
 function App(){
   this.out=process.stdout;
   this.sc=new Screen(this.out);
-  this.st={ view:'splash', ctx:12, tps:0, tokens:0, cache:87, model:'deepseek-v4-pro',
+  this.st={ view:'splash', ctx:0, ctxTokens:0, ctxWindow:0, cost:0, conn:'?', tps:0, tokens:0, cache:87, model:'deepseek-v4-pro',
     mode:'max', effort:'Max effort', agent:'main', session:hex8(), cwd:process.cwd(),
     git:gitBranch(), startedAt:Date.now(), input:'', cur:0, hist:[], hi:0,
     menu:false, menuSel:0, showRewind:false, showHelp:false, busy:false, stateTxt:'\u5c31\u7eea',
     activity:'\u7a7a\u95f2', phase:0, scroll:1e9, tab:0, sel:[0,0,0,0,0], exited:false, expanded:false };
   this.rows=[];
-  this.todos=[ {t:'demo',s:1}, {t:'\u8ba1\u7b97\u5468\u6b21\u5e76\u5217\u51fa\u4eca\u65e5\u8bfe\u7a0b',s:1},
-               {t:'demo',s:0}, {t:'\u751f\u6210\u6574\u7406\u5efa\u8bae',s:-1} ];
+  this.todos=[];
   this.ctxInfo={ system:12, runtime:3, tools:26 };
   this.timers=[];
+  this.gw=null; this.gwErr=null; this.gwSid=null; this.gwPort=null;
+  this.sessionKey=process.env.OPC_SESSION_KEY||'agent:main:opc-tui-full';
+  this.streamRun=null; this.thinkText=''; this.thinkRow=-1; this.ansText=''; this.ansRowStart=-1; this.ansItemId=''; this.toolRows={};
 }
 App.prototype.row=function(segs){ this.rows.push(segs||[]); };
 App.prototype.wrapPush=function(segs,width){
@@ -79,12 +82,15 @@ App.prototype.session=function(){
   process.stdout.on('resize', function(){ self.render(); });
   process.stdin.on('data', function(s){ self.onData(s); });
   this.render();
+  this.gwStart();
   this.loop=setInterval(function(){ self.st.phase++; self.render(); }, 80);
 };
 App.prototype.teardown=function(){
   if(this.st.exited) return; this.st.exited=true;
   for(var i=0;i<this.timers.length;i++){ clearTimeout(this.timers[i]); clearInterval(this.timers[i]); }
   if(this.loop) clearInterval(this.loop);
+  if(this.liveTimer) clearInterval(this.liveTimer);
+  if(this.gw){ try{ this.gw.stop(); }catch(e){} }
   try{ process.stdin.setRawMode(false); }catch(e){}
   process.stdin.pause();
   this.out.write(ansi.U.mouseOff+ansi.U.curShow+ansi.U.reset+ansi.U.altOff);
@@ -149,8 +155,8 @@ App.prototype.renderWork=function(w,h){
   for(x=0;x<w;x++) this.sc.put(x,0,' ',null,C.panel2);
   this.sc.text(1,0,'\u258c OPENCLAW TUI',C.brand3,null,true);
   var clock=new Date();
-  var rt='gateway \u25cf online   '+pad2(clock.getHours())+':'+pad2(clock.getMinutes())+':'+pad2(clock.getSeconds())+'  ';
-  this.sc.text(Math.max(0,w-strWidth(rt)-1),0,rt,C.muted);
+  var gc=(st.conn==='ok')?C.ok:((st.conn==='x')?C.err:C.warn); var gtxt=(st.conn==='ok')?'online':((st.conn==='x')?'offline':'connecting'); var rt='gateway \u25cf '+gtxt+'   '+pad2(clock.getHours())+':'+pad2(clock.getMinutes())+':'+pad2(clock.getSeconds())+'  ';
+  this.sc.text(Math.max(0,w-strWidth(rt)-1),0,rt,gc);
   var mid='OpenClaw Harness \u00b7 v'+VERSION+'  ';
   if(w>62) this.sc.text(Math.max(18,Math.floor((w-strWidth(mid))/2)),0,mid,C.soft);
   this.sc.hline(0,1,w,'\u2500',C.border);
@@ -404,54 +410,146 @@ App.prototype.submit=function(v){
   if(!v) return;
   st.menu=false; st.hist.push(v); st.hi=st.hist.length; st.input=''; st.cur=0;
   if(v.charAt(0)==='/'){ this.runCmd(v); return; }
-  this.pushUser(v); this.simulate(v);
+  this.sendText(v);
 };
 App.prototype.pushUser=function(t){ this.row([{t:'\u276f ',fg:C.cyan,b:true},{t:t,fg:C.text,b:true}]); this.row([]); };
-App.prototype.addThink=function(){ this.row([{t:'\u273b ',fg:C.brand3}]); return this.rows.length-1; };
-App.prototype.streamInto=function(idx,text,fg,speed,cb){
-  var self=this, i=0;
-  var iv=setInterval(function(){
-    if(self.st.exited){ clearInterval(iv); return; }
-    if(i>=text.length){ clearInterval(iv); if(cb) cb(); return; }
-    var a=self.rows[idx]; if(!a){ clearInterval(iv); return; }
-    a.push({t:text.charAt(i),fg:fg}); i++;
-  }, speed||16);
-  this.timers.push(iv); return iv;
+App.prototype.gwStart=function(){
+  var self=this;
+  live.connect({
+    onHello: function(){ self.st.conn='ok'; self.render(); },
+    onError: function(m){ self.st.conn='x'; self.gwErr=m; self.render(); },
+    onEvent: function(ev){ self.onGwEvent(ev); }
+  }).then(function(r){
+    self.gw=r.gw; self.gwPort=r.cfg&&r.cfg.port; self.gwErr=null;
+    self.sessionKey=process.env.OPC_SESSION_KEY||'agent:main:opc-tui-full';
+    return self.gw.request('sessions.create',{key:self.sessionKey});
+  }).then(function(cr){
+    if(cr&&cr.sessionId) self.gwSid=cr.sessionId;
+    if(cr&&cr.key) self.sessionKey=cr.key;
+    return self.gw.request('sessions.list',{}).catch(function(){ return null; });
+  }).then(function(list){
+    if(list) self.applySessions(list);
+    self.row([{t:'\u2713 \u5df2\u8fde\u63a5\u7f51\u5173 \u00b7 \u4f1a\u8bdd '+self.sessionKey,fg:C.ok}]);
+    self.row([{t:'\u8f93\u5165\u6d88\u606f\u5f00\u59cb\u804a\u5929\uff0c\u6216\u8f93 / \u67e5\u770b\u547d\u4ee4\u3002',fg:C.dim}]);
+    self.render();
+  }).catch(function(e){
+    self.st.conn='x'; self.gwErr=String(e&&e.message||e);
+    self.row([{t:'\u2717 \u7f51\u5173\u8fde\u63a5\u5931\u8d25\uff1a'+self.gwErr,fg:C.err}]);
+    self.render();
+  });
+  if(this.liveTimer) clearInterval(this.liveTimer);
+  this.liveTimer=setInterval(function(){ self.livePoll(); }, 1600);
 };
-App.prototype.simulate=function(text){
+App.prototype.livePoll=function(){
   var self=this, st=this.st;
-  st.busy=true; st.stateTxt='\u601d\u8003\u4e2d'; st.activity='\u601d\u8003';
-  var ti=this.addThink();
-  this.streamInto(ti,'\u5148\u770b\u770b\u4f60\u8bf4\u7684\u300c'+text.slice(0,16)+'\u300d\u2026\u5224\u65ad\u8981\u4e0d\u8981\u8c03\u5de5\u5177\u3002\u8981\u5c31\u8dd1\u4e00\u6b21 exec\uff0c\u62ff\u5230\u8f93\u51fa\u518d\u7ec4\u7ec7\u7b54\u6848\u3002',C.muted,14,function(){
-    self.row([{t:'\u25b8 exec',fg:C.brand3,b:true},{t:'   \u8fd0\u884c\u4e2d',fg:C.muted}]);
-    var hI=self.rows.length-1;
-    self.row([{t:'  $ /bin/sh -lc "echo hello from '+st.session+'"',fg:C.cyan}]);
-    self.row([{t:'  (waiting)',fg:C.dim}]);
-    var oI=self.rows.length-1;
-    st.activity='exec'; self.genTick(2600);
-    self.later(700,function(){
-      self.rows[hI]=[{t:'\u25b8 exec',fg:C.brand3,b:true},{t:'   \u5b8c\u6210  '+(0.3+Math.random()*0.4).toFixed(2)+'s',fg:C.ok}];
-      self.rows[oI]=[{t:'  hello from '+st.session,fg:C.soft}];
-      st.busy=true; st.stateTxt='\u751f\u6210\u4e2d'; st.activity='\u751f\u6210';
-      self.row([]); self.row([{t:'\u273b ',fg:C.brand3}]);
-      var ai=self.rows.length-1;
-      self.streamInto(ai,'\u6536\u5230\u3002\u8fd9\u662f OpenClaw \u4e13\u5c5e TUI \u2014\u2014 \u601d\u8003\u6d41\u3001\u5de5\u5177\u5361\u3001\u5e95\u680f\u5b57\u6bb5\u90fd\u5728\u5de5\u4f5c\u3002\u8f93\u5165 / \u770b\u5168\u90e8\u6307\u4ee4\u3002',C.text,13,function(){
-        st.busy=false; st.stateTxt='\u5c31\u7eea'; st.activity='\u7a7a\u95f2';
-      });
-      self.row([]);
+  if(!this.gw||!this.gw.state.connected) return;
+  this._tick=(this._tick||0)+1;
+  if(!st.busy && this._tick%3!==0) return;
+  this.gw.request('sessions.list',{}).then(function(r){ self.applySessions(r); }).catch(function(){});
+};
+App.prototype.applySessions=function(r){
+  var st=this.st, arr=(r&&r.sessions)||[], e=null, i;
+  for(i=0;i<arr.length;i++){ if(arr[i].key===this.sessionKey){ e=arr[i]; break; } }
+  if(!e) return;
+  if(typeof e.totalTokens==='number') st.tokens=e.totalTokens;
+  if(typeof e.inputTokens==='number') st.ctxTokens=e.inputTokens;
+  if(typeof e.outputTokens==='number') st.outTokens=e.outputTokens;
+  if(typeof e.contextTokens==='number'&&e.contextTokens>0) st.ctxWindow=e.contextTokens;
+  if(typeof e.estimatedCostUsd==='number') st.cost=e.estimatedCostUsd;
+  if(e.model) st.model=e.model;
+  if(e.modelProvider&&e.model) st.modelFull=e.modelProvider+'/'+e.model;
+  st.ctx=Math.min(100,Math.round(100*(st.ctxTokens/(st.ctxWindow||32768))));
+  this.render();
+};
+App.prototype.onGwEvent=function(ev){
+  try{
+    var st=this.st, p=ev&&ev.payload; if(!p) return;
+    if(ev.event!=='agent'&&ev.event!=='chat') return;
+    var sk=p.sessionKey||'', mine=false;
+    if(this.streamRun&&p.runId===this.streamRun) mine=true;
+    else if(sk&&sk===this.sessionKey) mine=true;
+    if(!mine) return;
+    var d=p.data||{};
+    if(!this.streamRun&&typeof p.runId==='string'&&p.runId) this.streamRun=p.runId;
+    if(ev.event==='chat'){
+      if(typeof p.deltaText==='string'&&p.deltaText){ this.ansText=p.deltaText; this.paintAnswer(); }
+      if(p.state==='final'&&st.busy) this.finishTurn();
+      return;
+    }
+    if(p.stream==='run_status'){
+      var ph=String((d&&d.phase)||'');
+      st.stateTxt=(ph==='preparing_workspace')?'\u51c6\u5907\u5de5\u4f5c\u533a':((ph==='preparing_context')?'\u88c5\u914d\u4e0a\u4e0b\u6587':(ph||'\u8fd0\u884c\u4e2d'));
+      this.render(); return;
+    }
+    if(p.stream==='thinking'){ this.thinkText=(typeof d.text==='string'&&d.text)||d.delta||''; this.paintThink(); return; }
+    if(p.stream==='assistant'){
+      if(typeof d.itemId==='string'&&d.itemId&&d.itemId!==this.ansItemId){ this.ansItemId=d.itemId; this.ansText=''; this.ansRowStart=-1; }
+      if(typeof d.text==='string'&&d.text){ if(!this.ansText||d.text.indexOf(this.ansText)===0) this.ansText=d.text; else this.ansText=this.ansText+String(d.delta||d.text); }
+      else this.ansText=String(this.ansText||'')+String(d.delta||'');
+      this.paintAnswer();
+      return;
+    }
+    if(p.stream==='usage'){ if(typeof d.outputTokens==='number') st.outTokens=d.outputTokens; return; }
+    if(p.stream==='item'&&d){ this.paintTool(d); return; }
+    if(p.stream==='lifecycle'){ if(d.phase==='end'&&st.busy) this.finishTurn(); return; }
+  }catch(e){}
+};
+App.prototype.paintThink=function(){
+  var t=String(this.thinkText||'').replace(/\s+/g,' ').slice(-140);
+  var seg=[{t:'\u273b ',fg:C.brand3},{t:t,fg:C.muted}];
+  if(this.thinkRow<0||!this.rows[this.thinkRow]){ this.row(seg); this.thinkRow=this.rows.length-1; }
+  else this.rows[this.thinkRow]=seg;
+  this.render();
+};
+App.prototype.paintAnswer=function(){
+  var txt=String(this.ansText||''); if(!txt) return;
+  var cols=this.out.columns||80, cW=(cols>=92)?(cols-33):(cols-2);
+  if(this.ansRowStart>=0&&this.ansRowStart<=this.rows.length) this.rows.length=this.ansRowStart;
+  this.ansRowStart=this.rows.length;
+  this.wrapPush([{t:txt,fg:C.text}], Math.max(10,cW));
+  this.render();
+};
+App.prototype.paintTool=function(d){
+  var nm=d.title||d.name||d.kind||'tool', ph=d.phase||'';
+  var end=(ph==='end'), failed=end&&/fail|error|cancel|abort/i.test(String(d.status||''));
+  var id=d.itemId||d.toolCallId||nm;
+  if(!this.toolRows) this.toolRows={};
+  var seg=[{t:'\u25b8 ',fg:C.brand3,b:true},{t:nm,fg:C.soft},{t:'   '+(end?(failed?'\u2717 \u5931\u8d25':'\u2713 \u5b8c\u6210'):(ph||'\u8fd0\u884c\u4e2d')),fg:end?(failed?C.err:C.ok):C.muted}];
+  var idx=this.toolRows[id];
+  if(idx==null){ this.row(seg); this.toolRows[id]=this.rows.length-1; } else this.rows[idx]=seg;
+  this.render();
+};
+App.prototype.sendText=function(text){
+  var self=this, st=this.st;
+  this.pushUser(text);
+  if(!this.gw||!this.gw.state.connected){ this.row([{t:'\u2717 \u7f51\u5173\u672a\u8fde\u63a5\uff0c\u6d88\u606f\u672a\u53d1\u51fa',fg:C.err}]); this.render(); return; }
+  st.busy=true; st.stateTxt='\u601d\u8003\u4e2d'; st.activity='\u8bf7\u6c42';
+  this.streamRun=null; this.waitT0=Date.now();
+  this.thinkText=''; this.thinkRow=-1; this.ansText=''; this.ansRowStart=-1; this.ansItemId=''; this.toolRows={};
+  this.render();
+  this.gw.request('sessions.send',{key:this.sessionKey,message:text}).then(function(r){
+    if(r&&r.runId) self.streamRun=r.runId;
+  }).catch(function(e){
+    self.gw.request('openclaw.chat',{sessionId:self.gwSid,message:text}).then(function(r){
+      if(r&&r.reply){ self.ansText=r.reply; self.paintAnswer(); }
+      self.finishTurn();
+    }).catch(function(e2){
+      self.finishTurn();
+      self.row([{t:'\u2717 '+String(e2&&e2.message||e2),fg:C.err}]); self.render();
     });
   });
 };
-App.prototype.genTick=function(dur){
-  var self=this, t0=Date.now();
-  var iv=setInterval(function(){
-    if(self.st.exited){ clearInterval(iv); return; }
-    var p=(Date.now()-t0)/dur;
-    if(p>=1){ clearInterval(iv); self.st.tps=0; return; }
-    self.st.tps=16+Math.random()*26; self.st.ctx=Math.min(99,self.st.ctx+0.12);
-    self.st.tokens+=6; self.st.cache=Math.max(60,Math.min(99,self.st.cache+(Math.random()<0.5?-1:1)));
-  },180);
-  this.timers.push(iv);
+App.prototype.finishTurn=function(){
+  var st=this.st;
+  if(!st.busy) return;
+  st.busy=false; st.stateTxt='\u5c31\u7eea'; st.activity='\u7a7a\u95f2'; st.tps=0;
+  if(this.thinkRow>=0&&this.rows[this.thinkRow]){
+    var n=String(this.thinkText||'').length;
+    this.rows[this.thinkRow]=[{t:'\u25b8 \u601d\u8003 \u00b7 '+(n?n+' \u5b57':'\u5df2\u5b8c\u6210'),fg:C.dim}];
+  }
+  this.row([]);
+  this.render();
+  this.livePoll();
 };
 App.prototype.runCmd=function(raw){
   var st=this.st, c=raw.trim().split(/\s+/)[0];
@@ -459,17 +557,17 @@ App.prototype.runCmd=function(raw){
   if(c==='/quit'){ this.teardown(); process.exit(0); }
   if(c==='/clear'){ this.rows=[]; this.row([{t:'\u5df2\u6e05\u7a7a\u5f53\u524d\u89c6\u56fe',fg:C.muted}]); return; }
   if(c==='/theme'){ st.theme=st.theme==='light'?'dark':'light'; if(st.theme==='light'){C.bg=[238,241,246];C.text=[23,27,36];C.muted=[97,108,132];C.panel=[226,231,238];C.panel2=[214,221,232];C.line=[205,213,225];} else {C.bg=[8,9,13];C.text=[217,222,234];C.muted=[124,134,153];C.panel=[13,15,21];C.panel2=[22,25,34];C.line=[22,27,38];} this.row([{t:'\u5df2\u5207\u6362\u4e3a '+(st.theme==='light'?'\u6d45\u8272':'\u6df1\u8272')+' \u4e3b\u9898',fg:C.ok}]); return; }
-  if(c==='/new'){ st.session=hex8(); this.rows=[]; st.ctx=3; st.tps=0; this.row([{t:'OpenClaw TUI \u00b7 new session '+st.session,fg:C.muted}]); return; }
+  if(c==='/new'){ st.ctx=0; st.ctxTokens=0; st.tokens=0; st.outTokens=0; st.tps=0; this.thinkRow=-1; this.ansRowStart=-1; this.row([]); this.row([{t:'OpenClaw TUI \u00b7 \u65b0\u89c6\u56fe\uff08\u4f1a\u8bdd\u4e0d\u53d8\uff09 '+this.sessionKey,fg:C.muted}]); return; }
   if(c==='/resume'){ st.showRewind=true; return; }
   if(c==='/settings'){ st.tab=4; this.sysCard('/settings',['\u5e95\u680f\u5b57\u6bb5\u9010\u9879\u5f00\u5173\uff08\u53f3\u4fa7\u9762\u677f\u2193\u9009\u62e9\u3001Enter \u5207\u6362\uff09']); return; }
   if(c==='/help'){ this.sysCard('/help',['/help \u5e2e\u52a9  /new \u65b0\u4f1a\u8bdd  /model \u6a21\u578b  /status \u72b6\u6001','/agents /sessions /context /clear /compact','/resume \u56de\u6eaf  /theme \u4e3b\u9898  /settings \u8bbe\u7f6e','/balance \u4f59\u989d  /update \u66f4\u65b0  /quit \u9000\u51fa']); return; }
-  if(c==='/model'){ this.sysCard('/model',['\u5f53\u524d  '+st.model,'\u53ef\u7528  deepseek/deepseek-v4-pro (max)','      deepseek/deepseek-v4-flash','      lmstudio/qwen3.5-9b (local)','\u5207\u6362  /model <provider>/<model>']); return; }
-  if(c==='/status'){ this.sysCard('/status',['gateway    \u2713 live  127.0.0.1:18789','agent      '+st.agent,'session    '+st.session,'model      '+st.model+'  ('+st.mode+')','context    '+Math.round(st.ctx)+'% / 32768','git        '+st.git,'uptime     '+Math.floor((Date.now()-st.startedAt)/1000)+'s']); return; }
+  if(c==='/model'){ var selfM=this, mArg=raw.trim().split(/\s+/)[1]; if(!mArg){ this.sysCard('/model',['\u5f53\u524d  '+st.model,'\u7528\u6cd5  /model <provider>/<model>']); return; } if(!this.gw||!this.gw.state.connected){ this.sysCard('/model',['\u7f51\u5173\u672a\u8fde\u63a5']); return; } this.gw.request('sessions.patch',{key:this.sessionKey,model:mArg}).then(function(){ st.model=mArg; st.modelFull=mArg; selfM.sysCard('/model',['\u5df2\u5207\u6362 \u2192 '+mArg]); selfM.render(); }).catch(function(e){ selfM.sysCard('/model',['\u2717 '+String(e&&e.message||e)]); selfM.render(); }); return; }
+  if(c==='/status'){ var gok=(st.conn==='ok'); this.sysCard('/status',['gateway    '+(gok?'\u2713 connected':'\u2717 '+(this.gwErr||'offline'))+'  127.0.0.1:'+(this.gwPort||''),'agent      '+st.agent,'session    '+this.sessionKey,'model      '+st.model+(st.modelFull?'  '+st.modelFull:''),'context    '+Math.round(st.ctx)+'%  '+st.ctxTokens+' / '+(st.ctxWindow||32768),'tokens     '+grp(st.tokens)+'   cost $'+(st.cost||0).toFixed(4),'git        '+st.git,'uptime     '+Math.floor((Date.now()-st.startedAt)/1000)+'s']); return; }
   if(c==='/agents'){ this.sysCard('/agents',['* main   main  (active)','  demo']); return; }
-  if(c==='/sessions'){ this.sysCard('/sessions',['agent:main:main      '+st.session+'  active','agent:default:main   18570a69  idle']); return; }
-  if(c==='/context'){ this.sysCard('/context',['\u7cfb\u7edf\u63d0\u793a\u8bcd  '+this.ctxInfo.system+' \u6bb5','\u8fd0\u884c\u65f6\u4e0a\u4e0b\u6587  '+this.ctxInfo.runtime+' \u9879','\u5de5\u5177  '+this.ctxInfo.tools,'\u8f93\u5165\u7f13\u5b58\u547d\u4e2d  '+st.cache+'%']); return; }
-  if(c==='/compact'){ this.sysCard('/compact',['\u538b\u7f29\u5b8c\u6210 12% -> 3% \u00b7 \u5386\u53f2 3610 \u6761 -> 361 \u6761']); st.ctx=3; return; }
-  if(c==='/balance'){ this.sysCard('/balance',['\u672c\u6708\u8c03\u7528 1,286 \u6b21','tokens 3.4M','\u9884\u4f30\u8d39\u7528 \u00a5 12.80']); return; }
+  if(c==='/sessions'){ var selfS=this; if(!this.gw||!this.gw.state.connected){ this.sysCard('/sessions',['\u7f51\u5173\u672a\u8fde\u63a5']); return; } this.gw.request('sessions.list',{}).then(function(r){ var a=(r&&r.sessions)||[], ls=[]; for(var i=0;i<a.length&&i<10;i++){ ls.push(String(a[i].key||'')+'  '+String(a[i].totalTokens||0)+' tok'+(a[i].key===selfS.sessionKey?'  \u2190 current':'')); } selfS.sysCard('/sessions',ls.length?ls:['\uff08\u65e0\uff09']); selfS.render(); }).catch(function(e){ selfS.sysCard('/sessions',['\u2717 '+String(e&&e.message||e)]); selfS.render(); }); return; }
+  if(c==='/context'){ this.sysCard('/context',['\u4e0a\u4e0b\u6587  '+st.ctxTokens+' / '+(st.ctxWindow||32768)+'  ('+Math.round(st.ctx)+'%)','\u7cfb\u7edf\u63d0\u793a\u8bcd  '+this.ctxInfo.system+' \u6bb5','\u5de5\u5177  '+this.ctxInfo.tools,'\u8f93\u51fa token  '+(st.outTokens||0)]); return; }
+  if(c==='/compact'){ var selfC=this; if(!this.gw||!this.gw.state.connected){ this.sysCard('/compact',['\u7f51\u5173\u672a\u8fde\u63a5']); return; } this.gw.request('sessions.compact',{key:this.sessionKey}).then(function(){ selfC.sysCard('/compact',['\u5df2\u8bf7\u6c42\u538b\u7f29']); selfC.render(); }).catch(function(e){ selfC.sysCard('/compact',['\u2717 '+String(e&&e.message||e)]); selfC.render(); }); return; }
+  if(c==='/balance'){ this.sysCard('/balance',['tokens  '+grp(st.tokens),'\u8f93\u51fa token  '+(st.outTokens||0),'\u9884\u4f30\u8d39\u7528  $'+(st.cost||0).toFixed(4),'\u4f1a\u8bdd  '+this.sessionKey]); return; }
   if(c==='/update'){ this.sysCard('/update',['\u5f53\u524d v'+VERSION,'\u6700\u65b0 v'+VERSION+'  \u2713 \u5df2\u662f\u6700\u65b0']); return; }
   if(c==='/tips'){ this.sysCard('/tips',['\u2190\u2192 \u5207\u4fa7\u680f\u9875\u7b7e  \u00b7  \u2191\u2193 \u9009\u6761\u76ee  \u00b7  Enter \u786e\u8ba4','Ctrl+P \u5c55\u5f00/收起  \u00b7  Esc Esc \u65f6\u95f4\u56de\u6eaf']); return; }
   this.sysCard(c,['\u672a\u77e5\u547d\u4ee4\uff0c\u8f93\u5165 / \u67e5\u770b\u53ef\u7528\u6307\u4ee4']);
