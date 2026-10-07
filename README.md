@@ -18,14 +18,24 @@ OpenClaw 的**终端客户端（TUI）**：直连本机 Gateway 的 WebSocket，
 
 ## 安装
 
+**方式一（推荐）— 从源码装**：能改代码、能 `git pull` 更新
+
 ```bash
-git clone <你的仓库地址>
-cd opc-tui
+git clone https://github.com/LarnXA/OpenClaw-tui.git
+cd OpenClaw-tui
 npm install
 npm install -g .
 ```
 
 Windows 也可以双击 `install.bat`；macOS / Linux 用 `sh install.sh`。
+
+**方式二 — 一行从 GitHub 直装**（最省事）
+
+```bash
+npm install -g https://github.com/LarnXA/OpenClaw-tui.git
+```
+
+> 两者区别：方式一装的是本地仓库，改代码立刻生效、`git pull` 就能更新；方式二装的是从 GitHub 下载的快照，更新要重跑这条命令，也不适合改代码。
 
 ## 运行
 
