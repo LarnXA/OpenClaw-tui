@@ -4,27 +4,43 @@
   <img src="docs/assets/logo.svg" alt="dsh-TUI 像素龙虾标题动画" width="560">
 </p>
 
-## 特性
+## 预览
+<div align="center">
+  <picture>
+    <img src="docs/assets/view-tui.gif" alt="Recorded dsh-TUI session: welcome, completion, help and typing, with animated pixel whale." width="78%" alt="简约控制台">
+  </picture>
+</div>
+<p align="center">
+  <sup><em>简约控制台</em></sup>
+</p>
+<div align="center">
+  <picture>
+    <img src="docs/assets/view-tui-full.gif" alt="Recorded dsh-TUI session: welcome, completion, help and typing, with animated pixel whale." width="78%" alt="全屏控制台">
+  </picture>
+</div>
+<p align="center">
+  <sup><em>全屏控制台</em></sup>
+</p>
 
+
+## 特性
 - **直连 Gateway WebSocket**（`ws://127.0.0.1:<port>`），不经过 CLI 子进程
 - **真·流式思考**：区别于正文的样式，思考结束后自动折叠，`Ctrl+P` 展开/折叠
 - 正文流式输出 + 轻量 Markdown 渲染
 - 每步**动态图标**（思考 / 工具 / 正文 / 完成 / 出错）
 - 底部三行（输入框 / 上下文进度条 / 数据行）**跟随终端宽度**，缩放窗口自动重排
 - 启动 banner：像素小龙虾 + 大字 LOGO + 流光动画
-##预览
-- **简约tui**
-- 
-## 环境要求
 
+
+## 环境要求
 - **Node.js >= 18**
 - 本机正在运行 **OpenClaw Gateway**（默认 `127.0.0.1:18789`）
   
 ## 安装OpenClaw并配置
 **系统要求**
 - Node.js 22+（推荐 Node 24，安装脚本会自动处理）
-- 操作系统 macOS / Linux / Windows（Windows 强烈推荐使用 WSL2）
-- 包管理器 npm 或 pnpm（源码构建时需要 pnpm
+- 操作系统 (`macOS / Linux / Windows（Windows 强烈推荐使用 WSL2）`)
+- 包管理器 (`npm 或 pnpm`)（源码构建时需要 pnpm)
 
 **一键安装脚本**
 **macOS / Linux / WSL2：**
@@ -35,14 +51,14 @@ curl -fsSL https://openclaw.ai/install.sh | bash
 ```bash
 powershell -c "irm https://openclaw.ai/install.ps1 | iex"
 ```
-- 脚本会自动完成 Node 检测、安装和引导流程。如需仅安装而不启动引导，添加 --no-onboard 参数-
+- 脚本会自动完成 Node 检测、安装和引导流程。如需仅安装而不启动引导，添加 (`--no-onboard`) 参数-
 
 **运行引导向导**
 ```bash
 openclaw onboard
 ```
 **配置模型与 API 密钥**
-- 在引导过程中会提示选择模型提供商（Anthropic、OpenAI、Ollama 等）并输入 API 密钥。密钥推荐存放在 ~/.openclaw/.env 中，以便守护进程读取。 -
+- 在引导过程中会提示选择模型提供商（Anthropic、DeepSeek、Qwen、OpenAI、Ollama 等）并输入 API 密钥。密钥推荐存放在 (`~/.openclaw/.env`) 中，以便守护进程读取。 -
 ```bash
 openclaw onboard --non-interactive \
   --mode local \
@@ -87,7 +103,7 @@ openclaw health --verbose          # 详细健康检查
 ```
 ## 安装Opc-tui
 
-**方式一（推荐）— 从源码装**
+**方式一：手动克隆**
 
 ```bash
 git clone https://github.com/LarnXA/OpenClaw-tui.git
@@ -98,7 +114,7 @@ npm install -g .
 
 Windows 也可以双击 `install.bat`；macOS / Linux 用 `sh install.sh`。
 
-**方式二 — 命令行直装**
+**方式二：链接直装**
 
 ```bash
 npm install -g https://github.com/LarnXA/OpenClaw-tui.git
@@ -155,7 +171,3 @@ opc-tui --full   # 全屏界面（同样直连 Gateway）
 | src/sprite.js |像素小龙虾|
 |src/gw.mjs|Gateway 客户端封装|
 | dev-notes/|开发期探针脚本（已在 .gitignore 中排除）|
-
-## License
-
-MIT
