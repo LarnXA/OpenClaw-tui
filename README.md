@@ -1,7 +1,7 @@
 # opc-tui
 > OpenClaw 终端客户端：直连 Gateway 的流式 TUI，--full 全屏。实时思考折叠、工具卡、真实 token 与花费、命令补全、滚轮翻历史，零构建即用。
 <p align="center">
-  <img src="docs/assets/logo.svg" alt="dsh-TUI 像素鲸鱼标题动画" width="560">
+  <img src="docs/assets/logo.svg" alt="dsh-TUI 像素龙虾标题动画" width="560">
 </p>
 
 ## 预览
